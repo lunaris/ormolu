@@ -15,7 +15,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified FastString as GHC
 import GHC
-import Ormolu.Imports (sortImports)
 import Ormolu.Parser.Result
 import Ormolu.Utils
 
@@ -68,7 +67,7 @@ matchIgnoringSrcSpans = genericQuery
           gzipWithQ
             ( genericQuery
                 `extQ` srcSpanEq
-                `extQ` hsModuleEq
+                -- `extQ` hsModuleEq
                 `extQ` sourceTextEq
                 `extQ` hsDocStringEq
                 `ext2Q` forLocated
@@ -78,14 +77,14 @@ matchIgnoringSrcSpans = genericQuery
       | otherwise = Different []
     srcSpanEq :: SrcSpan -> GenericQ Diff
     srcSpanEq _ _ = Same
-    hsModuleEq :: HsModule GhcPs -> GenericQ Diff
-    hsModuleEq hs0 hs1' =
-      case cast hs1' :: Maybe (HsModule GhcPs) of
-        Nothing -> Different []
-        Just hs1 ->
-          matchIgnoringSrcSpans
-            hs0 {hsmodImports = sortImports (hsmodImports hs0)}
-            hs1 {hsmodImports = sortImports (hsmodImports hs1)}
+    -- hsModuleEq :: HsModule GhcPs -> GenericQ Diff
+    -- hsModuleEq hs0 hs1' =
+    --   case cast hs1' :: Maybe (HsModule GhcPs) of
+    --     Nothing -> Different []
+    --     Just hs1 ->
+    --       matchIgnoringSrcSpans
+    --         hs0 {hsmodImports = sortImports (hsmodImports hs0)}
+    --         hs1 {hsmodImports = sortImports (hsmodImports hs1)}
     sourceTextEq :: SourceText -> GenericQ Diff
     sourceTextEq _ _ = Same
     hsDocStringEq :: HsDocString -> GenericQ Diff

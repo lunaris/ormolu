@@ -58,7 +58,7 @@ module Ormolu.Printer.Combinators
     setLastCommentSpan,
     getLastCommentSpan,
     popComment,
-    observeNextComment,
+    getImportComments,
     withCommentStream,
   )
 where

@@ -15,7 +15,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Data.List ((\\), foldl', isPrefixOf)
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, mapMaybe)
 import qualified DynFlags as GHC
 import DynFlags as GHC
 import qualified FastString as GHC
@@ -34,6 +34,10 @@ import qualified Outputable as GHC
 import qualified Panic as GHC
 import qualified Parser as GHC
 import qualified StringBuffer as GHC
+import Ormolu.Imports (sortImports)
+import Ormolu.Utils (getStartLine)
+
+import qualified Data.Set as E
 
 -- | Parse a complete module from string.
 parseModule ::
@@ -72,10 +76,14 @@ parseModule Config {..} path input' = liftIO $ do
   let r = case runParser GHC.parseModule dynFlags path input of
         GHC.PFailed _ ss m ->
           Left (ss, GHC.showSDoc dynFlags m)
-        GHC.POk pstate pmod ->
-          let (comments, exts, shebangs) = mkCommentStream extraComments pstate
+        GHC.POk pstate (L spn pmod) ->
+          let unsortedImports = hsmodImports pmod
+              sortedImports = sortImports unsortedImports
+              importLineSet = E.fromList (mapMaybe getStartLine unsortedImports)
+              (comments, exts, shebangs) = mkCommentStream extraComments importLineSet pstate
            in Right ParseResult
-                { prParsedSource = pmod,
+                { prParsedSource = L spn $
+                     pmod {hsmodImports = sortedImports},
                   prAnns = mkAnns pstate,
                   prCommentStream = comments,
                   prExtensions = exts,

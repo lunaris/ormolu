@@ -8,6 +8,7 @@ module Ormolu.Utils
     notImplemented,
     showOutputable,
     splitDocString,
+    getStartLine,
     typeArgToType,
   )
 where
@@ -73,6 +74,13 @@ splitDocString docStr =
            in if leadingSpace x
                 then dropSpace <$> xs
                 else xs
+
+-- | Return line number on which the import is located or 'Nothing' if the
+-- attached span is “unhelpful” (should not happen in practice).
+getStartLine :: Located a -> Maybe Int
+getStartLine (L spn _) = case spn of
+  RealSrcSpan rspn -> Just (srcSpanStartLine rspn)
+  UnhelpfulSpan _ -> Nothing
 
 typeArgToType :: LHsTypeArg p -> LHsType p
 typeArgToType = \case

@@ -1,6 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
 
 -- | In most cases import "Ormolu.Printer.Combinators" instead, these
 -- functions are the low-level building blocks and should not be used on
@@ -35,12 +36,12 @@ module Ormolu.Printer.Internal
     trimSpanStream,
     nextEltSpan,
     popComment,
-    observeNextComment,
     getEnclosingSpan,
     withEnclosingSpan,
     HaddockStyle (..),
     setLastCommentSpan,
     getLastCommentSpan,
+    getImportComments,
     withCommentStream,
 
     -- * Annotations
@@ -63,6 +64,8 @@ import Ormolu.Parser.CommentStream
 import Ormolu.Printer.SpanStream
 import Ormolu.Utils (showOutputable)
 import Outputable (Outputable)
+
+import Data.Map (Map)
 
 ----------------------------------------------------------------------------
 -- The 'R' monad
@@ -423,8 +426,8 @@ popComment ::
   (RealLocated Comment -> Bool) ->
   R (Maybe (RealLocated Comment))
 popComment f = R $ do
-  CommentStream cstream <- gets scCommentStream
-  case cstream of
+  CommentStream {..} <- gets scCommentStream
+  case csStream of
     [] -> return Nothing
     (x : xs) ->
       if f x
@@ -433,16 +436,10 @@ popComment f = R $ do
             <$ modify
               ( \sc ->
                   sc
-                    { scCommentStream = CommentStream xs
+                    { scCommentStream = CommentStream xs csImportComments
                     }
               )
         else return Nothing
-
--- | Observe next comment in the stream without removing it.
-observeNextComment :: R (Maybe (RealLocated Comment))
-observeNextComment = R $ do
-  CommentStream cstream <- gets scCommentStream
-  return (listToMaybe cstream)
 
 -- | Get the first enclosing 'RealSrcSpan' that satisfies given predicate.
 getEnclosingSpan ::
@@ -488,6 +485,12 @@ setLastCommentSpan mhStyle spn = R . modify $ \sc ->
 getLastCommentSpan :: R (Maybe (Maybe HaddockStyle, RealSrcSpan))
 getLastCommentSpan = R (gets scLastCommentSpan)
 
+-- | TODO
+getImportComments ::
+  R (Map Int [RealLocated Comment])
+getImportComments = R $
+  gets (csImportComments . scCommentStream)
+
 -- | Run the inner action with temporarily altered comment stream.
 withCommentStream ::
   -- | Contents of the comment stream to use for the inner computation.
@@ -496,8 +499,8 @@ withCommentStream ::
   -- | The innear computation.
   R ()
 withCommentStream cs (R m) = R $ do
-  ambientStream <- gets scCommentStream
-  modify $ \sc -> sc { scCommentStream = CommentStream cs }
+  ambientStream@CommentStream {..} <- gets scCommentStream
+  modify $ \sc -> sc { scCommentStream = CommentStream cs csImportComments }
   m
   modify $ \sc -> sc { scCommentStream = ambientStream }
 

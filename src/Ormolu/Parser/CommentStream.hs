@@ -1,6 +1,7 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE RecordWildCards            #-}
 
 -- | Functions for working with comment stream.
 module Ormolu.Parser.CommentStream
@@ -17,20 +18,35 @@ where
 import Data.Char (isSpace)
 import Data.Data (Data)
 import Data.Either (partitionEithers)
-import Data.List (dropWhileEnd, isPrefixOf, sortOn)
+import Data.List (dropWhileEnd, isPrefixOf, sortOn, groupBy, foldl')
 import Data.List.NonEmpty (NonEmpty (..))
-import qualified Data.List.NonEmpty as NE
-import Data.Maybe (mapMaybe)
-import qualified GHC
-import qualified Lexer as GHC
+import Data.Map (Map)
+import Data.Maybe (mapMaybe, fromJust)
+import Data.Set (Set)
 import Ormolu.Parser.Pragma
 import Ormolu.Utils (showOutputable)
 import SrcLoc
+import qualified Data.List.NonEmpty as NE
+import qualified GHC
+import qualified Lexer as GHC
+import qualified Data.Set as E
+import qualified Data.Map as M
+
+-- import Debug.Trace
+
+-- import qualified Data.Set as E
+-- import Data.Maybe (mapMaybe)
+import Data.Function (on)
+-- import Data.List (groupBy, foldl')
+-- import Data.Map.Strict (Map)
 
 -- | A stream of 'RealLocated' 'Comment's in ascending order with respect to
 -- beginning of corresponding spans.
-newtype CommentStream = CommentStream [RealLocated Comment]
-  deriving (Eq, Data, Semigroup, Monoid)
+data CommentStream = CommentStream
+  { csStream :: [RealLocated Comment]
+  , csImportComments :: Map Int [RealLocated Comment]
+  }
+  deriving (Eq, Data) -- , Semigroup, Monoid
 
 -- | A wrapper for a single comment. The 'NonEmpty' list inside contains
 -- lines of multiline comment @{- … -}@ or just single item\/line otherwise.
@@ -43,17 +59,21 @@ newtype Comment = Comment (NonEmpty String)
 mkCommentStream ::
   -- | Extra comments to include
   [Located String] ->
+  -- | A set of line numbers corresponding to import statements
+  Set Int ->
   -- | Parser state to use for comment extraction
   GHC.PState ->
   -- | Comment stream, a set of extracted pragmas, and extracted shebangs
   (CommentStream, [Pragma], [Located String])
-mkCommentStream extraComments pstate =
-  ( CommentStream $
-      mkComment <$> sortOn (realSrcSpanStart . getRealSrcSpan) comments,
+mkCommentStream extraComments importLineSet pstate =
+  ( CommentStream {..},
     pragmas,
     shebangs
   )
   where
+    (csStream, csImportComments) = extractImportComments
+      (mkComment <$> sortOn (realSrcSpanStart . getRealSrcSpan) comments)
+      importLineSet
     (comments, pragmas) = partitionEithers (partitionComments <$> rawComments)
     rawComments =
       mapMaybe toRealSpan $
@@ -79,7 +99,7 @@ isMultilineComment (Comment (x :| _)) = "{-" `isPrefixOf` x
 
 -- | Pretty-print a 'CommentStream'.
 showCommentStream :: CommentStream -> String
-showCommentStream (CommentStream xs) =
+showCommentStream (CommentStream xs _) = -- FIXME
   unlines $
     showComment <$> xs
   where
@@ -87,6 +107,68 @@ showCommentStream (CommentStream xs) =
 
 ----------------------------------------------------------------------------
 -- Helpers
+
+-- | TODO
+extractImportComments ::
+  [RealLocated Comment] ->
+  Set Int ->
+  ([RealLocated Comment], Map Int [RealLocated Comment])
+extractImportComments cs importLineSet =
+  if E.null importLineSet
+    then (cs, M.empty)
+    else
+      let firstLine = fromJust (E.lookupMin importLineSet)
+          lastLine = fromJust (E.lookupMax importLineSet)
+          beforeFirstLine x = getRealStartLine x < firstLine
+          (csBefore, cs0) = span beforeFirstLine cs
+          (csImports, csAfter) = go lastLine id cs0
+            where
+              go ::
+                Int ->
+                ([RealLocated Comment] -> [RealLocated Comment]) ->
+                [RealLocated Comment] ->
+                ([RealLocated Comment], [RealLocated Comment])
+              go lastLine' finalizer = \case
+                [] -> (finalizer [], [])
+                (x : xs) ->
+                  let g = getRealStartLine x
+                   in if g <= lastLine' + 1
+                        then go (max lastLine (getRealStartLine x)) (finalizer . (x :)) xs
+                        else (finalizer [], x:xs)
+          importComments :: Map Int [RealLocated Comment]
+          importComments = M.fromList $
+            mapMaybe rearrange $ groupBy ((==) `on` fst) rawAssignments
+            where
+              rearrange :: [(Int, RealLocated Comment)] -> Maybe (Int, [RealLocated Comment])
+              rearrange = \case
+                [] -> Nothing
+                xs@((i, _) : _) -> Just (i, reverse (snd <$> xs))
+              f (assignedSoFar, currentImportSection, lineIndices) x =
+                case lineIndices of
+                  [] ->
+                    ( (currentImportSection, x) : assignedSoFar
+                    , currentImportSection
+                    , lineIndices
+                    )
+                  (nextIndex : otherIndices) ->
+                    if getRealStartLine x >= nextIndex
+                      then ( (nextIndex, x) : assignedSoFar
+                           , nextIndex
+                           , otherIndices
+                           )
+                      else ( (currentImportSection, x) : assignedSoFar
+                           , currentImportSection
+                           , lineIndices
+                           )
+              (rawAssignments, _, _) = foldl'
+                f
+                ([], firstIndex, otherIndices')
+                csImports
+              (firstIndex : otherIndices') = E.toAscList importLineSet
+      in (csBefore <> csAfter, importComments)
+
+getRealStartLine :: RealLocated a -> Int
+getRealStartLine (L spn _) = srcSpanStartLine spn
 
 -- | Normalize comment string. Sometimes one multi-line comment is turned
 -- into several lines for subsequent outputting with correct indentation for
