@@ -27,7 +27,7 @@ import qualified Data.Map.Strict as M
 
 import Ormolu.Utils (getStartLine)
 
-import Debug.Trace
+-- import Debug.Trace
 
 -- import Data.Bifunctor
 
@@ -79,7 +79,9 @@ p_hsModule shebangs pragmas (L moduleSpan HsModule {..}) = do
 
     importComments <- getImportComments
 
-    traceShow (M.map (fmap unRealSrcSpan) importComments) $ forM_ hsmodImports $ \x -> located x $ \_ -> do
+  -- traceShow (M.map (fmap unRealSrcSpan) importComments) $
+
+    forM_ hsmodImports $ \x -> located x $ \_ -> do
       let comments = fromMaybe [] $ do
             l <- getStartLine x
             M.lookup l importComments

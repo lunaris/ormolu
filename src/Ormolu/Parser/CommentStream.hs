@@ -51,7 +51,7 @@ data CommentStream = CommentStream
 -- | A wrapper for a single comment. The 'NonEmpty' list inside contains
 -- lines of multiline comment @{- … -}@ or just single item\/line otherwise.
 newtype Comment = Comment (NonEmpty String)
-  deriving (Eq, Show, Data)
+  deriving (Eq, Ord, Show, Data)
 
 -- | Create 'CommentStream' from 'GHC.PState'. The pragmas and shebangs are
 -- removed from the 'CommentStream'. Shebangs are only extracted from the

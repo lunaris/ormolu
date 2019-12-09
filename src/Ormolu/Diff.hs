@@ -18,12 +18,20 @@ import GHC
 import Ormolu.Parser.Result
 import Ormolu.Utils
 
+import Data.Map (Map)
+import Ormolu.Parser.CommentStream (Comment)
+import qualified Data.Set as E
+import qualified Data.Map as M
+
+-- import Debug.Trace
+
 -- | Result of comparing two 'ParseResult's.
 data Diff
   = -- | Two parse results are the same
     Same
   | -- | Two parse results differ
     Different [SrcSpan]
+  deriving (Show)
 
 instance Semigroup Diff where
   Same <> a = a
@@ -67,7 +75,7 @@ matchIgnoringSrcSpans = genericQuery
           gzipWithQ
             ( genericQuery
                 `extQ` srcSpanEq
-                -- `extQ` hsModuleEq
+                `extQ` hsImportCommentsEq
                 `extQ` sourceTextEq
                 `extQ` hsDocStringEq
                 `ext2Q` forLocated
@@ -77,14 +85,14 @@ matchIgnoringSrcSpans = genericQuery
       | otherwise = Different []
     srcSpanEq :: SrcSpan -> GenericQ Diff
     srcSpanEq _ _ = Same
-    -- hsModuleEq :: HsModule GhcPs -> GenericQ Diff
-    -- hsModuleEq hs0 hs1' =
-    --   case cast hs1' :: Maybe (HsModule GhcPs) of
-    --     Nothing -> Different []
-    --     Just hs1 ->
-    --       matchIgnoringSrcSpans
-    --         hs0 {hsmodImports = sortImports (hsmodImports hs0)}
-    --         hs1 {hsmodImports = sortImports (hsmodImports hs1)}
+    hsImportCommentsEq :: Map Int [RealLocated Comment] -> GenericQ Diff
+    hsImportCommentsEq ics0 ics1' =
+      case cast ics1' :: Maybe (Map Int [RealLocated Comment]) of
+        Nothing -> Different []
+        Just ics1 -> -- traceShow ((E.map (fmap unRealSrcSpan) (E.fromList (M.elems ics0))), (E.map (fmap unRealSrcSpan) (E.fromList (M.elems ics1)))) $
+          matchIgnoringSrcSpans
+            (E.fromList ((fmap unRealSrcSpan) <$> (M.elems ics0)))
+            (E.fromList ((fmap unRealSrcSpan) <$> (M.elems ics1)))
     sourceTextEq :: SourceText -> GenericQ Diff
     sourceTextEq _ _ = Same
     hsDocStringEq :: HsDocString -> GenericQ Diff
