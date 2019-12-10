@@ -89,7 +89,10 @@ matchIgnoringSrcSpans = genericQuery
     hsImportCommentsEq ics0 ics1' =
       case cast ics1' :: Maybe (Map Int [RealLocated Comment]) of
         Nothing -> Different []
-        Just ics1 -> -- traceShow ((E.map (fmap unRealSrcSpan) (E.fromList (M.elems ics0))), (E.map (fmap unRealSrcSpan) (E.fromList (M.elems ics1)))) $
+        Just ics1 -> -- traceShow
+          -- ( (E.fromList ((fmap unRealSrcSpan) <$> (M.elems ics0)))
+          -- , (E.fromList ((fmap unRealSrcSpan) <$> (M.elems ics1)))
+          -- ) $
           matchIgnoringSrcSpans
             (E.fromList ((fmap unRealSrcSpan) <$> (M.elems ics0)))
             (E.fromList ((fmap unRealSrcSpan) <$> (M.elems ics1)))
