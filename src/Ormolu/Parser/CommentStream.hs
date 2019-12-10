@@ -114,9 +114,9 @@ extractImportComments ::
   Set Int ->
   ([RealLocated Comment], Map Int [RealLocated Comment])
 extractImportComments cs importLineSet =
-  if E.null importLineSet
-    then (cs, M.empty)
-    else
+  case E.toAscList importLineSet of
+    [] -> (cs, M.empty)
+    (firstIndex : otherIndices') ->
       let firstLine = fromJust (E.lookupMin importLineSet)
           lastLine = fromJust (E.lookupMax importLineSet)
           beforeFirstLine x = getRealStartLine x < firstLine
@@ -164,7 +164,6 @@ extractImportComments cs importLineSet =
                 f
                 ([], firstIndex, otherIndices')
                 csImports
-              (firstIndex : otherIndices') = E.toAscList importLineSet
       in (csBefore <> csAfter, importComments)
 
 getRealStartLine :: RealLocated a -> Int
